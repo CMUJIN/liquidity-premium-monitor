@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # 允许推送到仓库
+  contents: write   # ✅ 允许推送到仓库
 
 jobs:
   run-monitor:
@@ -15,8 +15,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true   # 使用 GITHUB_TOKEN 推送
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,34 +29,19 @@ jobs:
 
       - name: Clean docs directory
         run: |
-          echo "🧹 Cleaning docs/ directory..."
-          # 如果 docs 不存在，先创建，确保后续 ls/上传不报空
-          mkdir -p docs
-          # 先从 git 中删除旧内容（避免残留被记录为删除）
-          git rm -r docs/* --ignore-unmatch || true
-          # 再从工作区删除
+          echo "🧹 Cleaning old docs directory..."
           rm -rf docs/*
-          mkdir -p docs
           echo "✅ Cleaned docs/"
 
       - name: Run Liquidity Premium Monitor
         run: |
           python liquidity_premium_monitor.py
 
-      - name: List generated outputs
-        run: |
-          echo "📂 Listing docs/:"
-          ls -la docs || true
-          echo "📂 Deep list:"
-          find docs -maxdepth 3 -type f -print || true
-
       - name: Commit and Push Results
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 再次 add（确保新增目录被纳入）
           git add docs/
-          # 若无变化不会中断
           git commit -m "Auto update LP Monitor results [$(date '+%Y-%m-%d %H:%M:%S')]" || echo "No changes to commit"
           git push origin main
 
