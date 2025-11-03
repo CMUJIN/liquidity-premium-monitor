@@ -22,6 +22,11 @@ stocks:
     market: "hk"
     start: "2023-01-01"
 
+  - name: "Qindaogang"
+    symbol: "06198"
+    market: "hk"
+    start: "2023-01-01"
+
 # Optional global settings
 output_dir: "docs"
 log_level: "INFO"
