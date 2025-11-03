@@ -1,0 +1,8 @@
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+yfinance>=0.2.38
+akshare>=1.13.36
+requests>=2.31.0
+lxml>=4.9.3
+openpyxl>=3.1.2
