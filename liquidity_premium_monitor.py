@@ -206,7 +206,7 @@ def main():
     cfg = load_config()
     output_dir = cfg.get("output_dir", "docs")
 
-        for stock in cfg.get("stocks", []):
+    for stock in cfg.get("stocks", []):
         symbol = stock["symbol"]
         market = stock.get("market", "auto")
         start = stock.get("start", "2015-01-01")
