@@ -37,6 +37,15 @@ jobs:
         run: |
           python liquidity_premium_monitor.py
 
+      - name: Push PNGs to Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: |
+          pip install notion-client pyyaml
+          python push_to_notion.py
+
       - name: Commit and Push Results
         run: |
           git config --global user.name "github-actions[bot]"
