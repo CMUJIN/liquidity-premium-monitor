@@ -2,18 +2,22 @@
 # -*- coding: utf-8 -*-
 
 """
-Liquidity Premium Monitor (Final Root-Version)
-----------------------------------------------
-- Reads config.yaml for stock list & settings
-- Fetches daily OHLCV data (CN/HK/US)
-- Derives weekly/daily LP Scores
-- Saves results to docs/<symbol>/ folders
-- Plots:
-    1️⃣ Weekly LP + Price (full range)
-    2️⃣ Daily LP + Price (last 3 months)
+Liquidity Premium Monitor (Final Version)
+------------------------------------------
+- 读取 config.yaml 自动批量分析股票
+- 支持 A股 / 港股 / 美股（日线数据）
+- 计算日线 + 周线 LP Score
+- 绘制双面板图：
+    上图：全区间（周线 LP + 收盘价）
+    下图：最近 3 个月（日线 LP + 收盘价）
+- 输出：
+    docs/<symbol>/<symbol>_lp_dual.csv
+    docs/<symbol>/<symbol>_lp_dual_zoom.png
 """
 
 import os, sys, json, yaml
+import matplotlib
+matplotlib.use("Agg")  # ✅ 必须：无图形界面环境下强制使用无缓存后端
 import pandas as pd, numpy as np, matplotlib.pyplot as plt
 
 try:
@@ -26,7 +30,9 @@ except ImportError:
     yf = None
 
 
-# ========== Load Config ==========
+# ============================================================
+#  1️⃣ 读取配置
+# ============================================================
 def load_config(path="config.yaml"):
     if not os.path.exists(path):
         print(f"[Error] Missing config.yaml at {path}")
@@ -35,7 +41,9 @@ def load_config(path="config.yaml"):
         return yaml.safe_load(f)
 
 
-# ========== Symbol Normalization ==========
+# ============================================================
+#  2️⃣ 股票代码标准化
+# ============================================================
 def normalize_symbol(symbol, market, provider):
     s = symbol.strip().upper()
     if market == "cn":
@@ -54,16 +62,9 @@ def normalize_symbol(symbol, market, provider):
         return s
 
 
-def guess_market(symbol):
-    s = symbol.strip().upper()
-    if s.endswith(".HK") or (s.isdigit() and len(s) in (4, 5)):
-        return "hk"
-    if len(s) == 6 and s[0].isdigit():
-        return "cn"
-    return "us"
-
-
-# ========== Fetch Data ==========
+# ============================================================
+#  3️⃣ 数据获取
+# ============================================================
 def fetch_daily_data(symbol, market, start):
     df = None
     if ak and market in ("cn", "hk"):
@@ -101,7 +102,9 @@ def fetch_daily_data(symbol, market, start):
     return df
 
 
-# ========== Indicators ==========
+# ============================================================
+#  4️⃣ 指标计算
+# ============================================================
 def resample_ohlcv(df, agg="weekly"):
     if agg == "daily":
         return df.copy()
@@ -164,8 +167,19 @@ def compute_score(df, w_vol=0.4, w_var=0.3, w_val=0.2, w_sent=0.1):
     return df
 
 
-# ========== Plot Dual Panels ==========
+# ============================================================
+#  5️⃣ 绘图函数（防缓存版）
+# ============================================================
 def plot_dual_panel(df_d, df_w, symbol, market, start, outdir):
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+
+    # --- Step 1: 清理缓存环境 ---
+    plt.close("all")
+    mpl.rcParams.update(mpl.rcParamsDefault)
+    plt.rcParams.update({'figure.max_open_warning': 0})
+    plt.rcParams["axes.unicode_minus"] = False
+
     cutoff = df_d["date"].max() - pd.Timedelta(days=90)
     df_recent = df_d[df_d["date"] >= cutoff]
 
@@ -194,14 +208,27 @@ def plot_dual_panel(df_d, df_w, symbol, market, start, outdir):
         ax_lp_bot.axhline(thr, color="gray", linestyle="--", linewidth=0.8)
     ax_p_bot.legend(loc="upper left", frameon=False)
 
+    # --- Step 2: 保存并覆盖旧文件 ---
     os.makedirs(outdir, exist_ok=True)
     out_path = os.path.join(outdir, f"{symbol}_{market}_lp_dual_zoom.png")
-    fig.savefig(out_path, dpi=150)
+    if os.path.exists(out_path):
+        os.remove(out_path)
+
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
+    fig.canvas.draw()
     plt.close(fig)
+    plt.close("all")
+
+    # --- Step 3: 验证输出 ---
+    if not os.path.exists(out_path):
+        raise IOError(f"[Plot Error] Failed to save image at {out_path}")
+    print(f"[Plot OK] {out_path} ({os.path.getsize(out_path)} bytes)")
     return out_path
 
 
-# ========== Main ==========
+# ============================================================
+#  6️⃣ 主函数
+# ============================================================
 def main():
     cfg = load_config()
     output_dir = cfg.get("output_dir", "docs")
@@ -210,8 +237,9 @@ def main():
         symbol = stock["symbol"]
         market = stock.get("market", "auto")
         start = stock.get("start", "2015-01-01")
+        display_name = stock.get("name", symbol).replace(" ", "_")
 
-        print(f"\n[Running] {symbol} ({market}) from {start}")
+        print(f"\n[Running] {display_name} ({symbol}, {market}) from {start}")
         df = fetch_daily_data(symbol, market, start)
         if df is None or df.empty:
             print(f"[Error] No data for {symbol}")
@@ -220,13 +248,13 @@ def main():
         df_d = compute_score(compute_indicators(df, "daily"))
         df_w = compute_score(compute_indicators(df, "weekly"))
 
-        stock_dir = os.path.join(output_dir, symbol)
+        stock_dir = os.path.join(output_dir, display_name)
         os.makedirs(stock_dir, exist_ok=True)
 
-        csv_path = os.path.join(stock_dir, f"{symbol}_{market}_lp_dual.csv")
+        csv_path = os.path.join(stock_dir, f"{display_name}_{market}_lp_dual.csv")
         pd.concat([df_d.assign(freq="daily"), df_w.assign(freq="weekly")]).to_csv(csv_path, index=False)
 
-        png_path = plot_dual_panel(df_d, df_w, symbol, market, start, outdir=stock_dir)
+        png_path = plot_dual_panel(df_d, df_w, display_name, market, start, outdir=stock_dir)
         print(f"[Saved] CSV: {csv_path}")
         print(f"[Saved] PNG: {png_path}")
 
