@@ -220,13 +220,15 @@ def main():
         df_d = compute_score(compute_indicators(df, "daily"))
         df_w = compute_score(compute_indicators(df, "weekly"))
 
-        stock_dir = os.path.join(output_dir, symbol)
+        # 使用 name 作为目录与文件名前缀
+        display_name = stock.get("name", symbol).replace(" ", "_")
+        
+        stock_dir = os.path.join(output_dir, display_name)
         os.makedirs(stock_dir, exist_ok=True)
+        
+        csv_path = os.path.join(stock_dir, f"{display_name}_{market}_lp_dual.csv")
+        png_path = os.path.join(stock_dir, f"{display_name}_{market}_lp_dual_zoom.png")
 
-        csv_path = os.path.join(stock_dir, f"{symbol}_{market}_lp_dual.csv")
-        pd.concat([df_d.assign(freq="daily"), df_w.assign(freq="weekly")]).to_csv(csv_path, index=False)
-
-        png_path = plot_dual_panel(df_d, df_w, symbol, market, start, outdir=stock_dir)
         print(f"[Saved] CSV: {csv_path}")
         print(f"[Saved] PNG: {png_path}")
 
