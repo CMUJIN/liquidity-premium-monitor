@@ -5,6 +5,9 @@ on:
     - cron: "0 1 * * *"   # 每天北京时间 09:00 自动执行
   workflow_dispatch:
 
+permissions:
+  contents: write   # ✅ 允许推送到仓库
+
 jobs:
   run-monitor:
     runs-on: ubuntu-latest
@@ -22,8 +25,13 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          # 确保 YAML 库存在
           pip install pyyaml
+
+      - name: Clean docs directory
+        run: |
+          echo "🧹 Cleaning old docs directory..."
+          rm -rf docs/*
+          echo "✅ Cleaned docs/"
 
       - name: Run Liquidity Premium Monitor
         run: |
