@@ -1,0 +1,32 @@
+name: Auto LP Monitor Run
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 每天 09:00（北京时间）自动执行
+  workflow_dispatch:
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run LP Monitor
+        run: |
+          python downloader/liquidity_premium_monitor.py --symbol 600519 --market cn --start 2020-01-01
+          python downloader/liquidity_premium_monitor.py --symbol 0700 --market hk --start 2020-01-01
+
+      - name: Upload output
+        uses: actions/upload-artifact@v4
+        with:
+          name: lp_output
+          path: output/
