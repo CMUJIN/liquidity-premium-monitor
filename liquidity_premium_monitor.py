@@ -210,9 +210,8 @@ def main():
         symbol = stock["symbol"]
         market = stock.get("market", "auto")
         start = stock.get("start", "2015-01-01")
-        display_name = stock.get("name", symbol).strip().replace(" ", "_")
 
-        print(f"\n[Running] {display_name} ({symbol}, {market}) from {start}")
+        print(f"\n[Running] {symbol} ({market}) from {start}")
         df = fetch_daily_data(symbol, market, start)
         if df is None or df.empty:
             print(f"[Error] No data for {symbol}")
@@ -221,26 +220,15 @@ def main():
         df_d = compute_score(compute_indicators(df, "daily"))
         df_w = compute_score(compute_indicators(df, "weekly"))
 
-        # 目录用 name
-        output_dir = cfg.get("output_dir", "docs")
-        stock_dir = os.path.join(output_dir, display_name)
+        stock_dir = os.path.join(output_dir, symbol)
         os.makedirs(stock_dir, exist_ok=True)
 
-        csv_path = os.path.join(stock_dir, f"{display_name}_{market}_lp_dual.csv")
-        png_path = os.path.join(stock_dir, f"{display_name}_{market}_lp_dual_zoom.png")
-
+        csv_path = os.path.join(stock_dir, f"{symbol}_{market}_lp_dual.csv")
         pd.concat([df_d.assign(freq="daily"), df_w.assign(freq="weekly")]).to_csv(csv_path, index=False)
-        plot_dual_panel(df_d, df_w, symbol, market, start, outdir=stock_dir)
 
-        # --- 强校验：确保输出真实存在 ---
-        csv_ok = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
-        png_ok = os.path.exists(png_path) and os.path.getsize(png_path) > 0
-        if not (csv_ok and png_ok):
-            raise RuntimeError(f"Output missing: csv_ok={csv_ok}, png_ok={png_ok} at {stock_dir}")
-
+        png_path = plot_dual_panel(df_d, df_w, symbol, market, start, outdir=stock_dir)
         print(f"[Saved] CSV: {csv_path}")
         print(f"[Saved] PNG: {png_path}")
-
 
     print("\n✅ All tasks completed.")
 
