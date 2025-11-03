@@ -59,7 +59,7 @@ def build_image_blocks(pngs, base_url):
     return blocks
 
 def push_to_notion():
-    # 从环境变量读取
+    # ✅ 从环境变量读取敏感信息
     token = os.getenv("NOTION_TOKEN")
     page_id = os.getenv("NOTION_PAGE_ID")
     base_url = os.getenv("BASE_URL")
@@ -78,13 +78,17 @@ def push_to_notion():
     notion = Client(auth=token)
     blocks = build_image_blocks(pngs, base_url)
 
-    # 清空旧内容
-    children = notion.blocks.children.list(page_id).get("results", [])
-    for child in children:
-        notion.blocks.delete(child["id"])
+    # ✅ 清空旧内容（安全做法：遍历删除旧 block）
+    existing = notion.blocks.children.list(page_id).get("results", [])
+    for child in existing:
+        try:
+            notion.blocks.delete(child["id"])
+        except Exception as e:
+            print(f"[Warn] Could not delete block: {e}")
 
-    # 推送新内容
-    notion.blocks.children.append(page_id, {"children": blocks})
+    # ✅ 使用新版 SDK 正确写法
+    notion.blocks.children.append(block_id=page_id, children=blocks)
+
     print(f"[Done] Uploaded {len(pngs)} images to Notion at {datetime.now()}")
 
 if __name__ == "__main__":
