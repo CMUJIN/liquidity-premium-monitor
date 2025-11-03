@@ -2,7 +2,8 @@
 # Each entry defines a stock symbol, market, and start date.
 
 stocks:
-  - symbol: "09988"
+  - name: "Alibaba"
+    symbol: "09988"
     market: "hk"
     start: "2023-01-01"
 
