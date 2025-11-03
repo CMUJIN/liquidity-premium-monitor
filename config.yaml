@@ -5,11 +5,22 @@ stocks:
   - name: "Alibaba"
     symbol: "09988"
     market: "hk"
-    start: "2024-06-01"
+    start: "2023-01-01"
 
-  #- symbol: "09988"
-   # market: "hk"
-    #start: "2023-01-01"
+  - name: "Haiyou"
+    symbol: "00883"
+    market: "hk"
+    start: "2023-01-01"
+
+  - name: "Haikong"
+    symbol: "01919"
+    market: "hk"
+    start: "2023-01-01"
+
+  - name: "Xincheng"
+    symbol: "01030"
+    market: "hk"
+    start: "2023-01-01"
 
 # Optional global settings
 output_dir: "docs"
