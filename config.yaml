@@ -27,6 +27,11 @@ stocks:
     market: "hk"
     start: "2023-01-01"
 
+  - name: "Paopaomate"
+    symbol: "09988"
+    market: "hk"
+    start: "2024-01-01"
+
 # Optional global settings
 output_dir: "docs"
 log_level: "INFO"
