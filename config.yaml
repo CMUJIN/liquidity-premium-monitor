@@ -32,6 +32,11 @@ stocks:
     market: "hk"
     start: "2024-01-01"
 
+  - name: "Meidi"
+    symbol: "00300"
+    market: "hk"
+    start: "2024-01-01"
+
 # Optional global settings
 output_dir: "docs"
 log_level: "INFO"
