@@ -45,14 +45,13 @@ def build_image_blocks(pngs, base_url):
     })
 
     for p in pngs:
-        # --------------------------
-        # ✅ 使用 jsDelivr CDN 而不是 GitHub Pages / raw
-        # --------------------------
-        img_url = (
-            f"https://cdn.jsdelivr.net/gh/CMUJIN/liquidity-premium-monitor@main/"
-            f"docs/{p['rel']}?v={int(time.time())}"
-        )
-
+        # 🔧 这里做了唯一的逻辑微调：
+        # - 如果是 jsDelivr 这种 CDN，不再附加 ?v=，避免 Notion 对带 query 的外链图片抽风
+        # - 其它情况仍然保留原来的 cache-busting 逻辑
+        if "cdn.jsdelivr.net" in base_url:
+            img_url = f"{base_url}/{p['rel']}"
+        else:
+            img_url = f"{base_url}/{p['rel']}?v={int(time.time())}"
 
         blocks.append({
             "object": "block",
@@ -67,6 +66,7 @@ def build_image_blocks(pngs, base_url):
     return blocks
 
 def push_to_notion():
+    # ✅ 从环境变量读取敏感信息
     token = os.getenv("NOTION_TOKEN")
     page_id = os.getenv("NOTION_PAGE_ID")
     base_url = os.getenv("BASE_URL")
@@ -85,6 +85,7 @@ def push_to_notion():
     notion = Client(auth=token)
     blocks = build_image_blocks(pngs, base_url)
 
+    # ✅ 清空旧内容（安全做法：遍历删除旧 block）
     existing = notion.blocks.children.list(page_id).get("results", [])
     for child in existing:
         try:
@@ -92,6 +93,7 @@ def push_to_notion():
         except Exception as e:
             print(f"[Warn] Could not delete block: {e}")
 
+    # ✅ 使用新版 SDK 正确写法
     notion.blocks.children.append(block_id=page_id, children=blocks)
 
     print(f"[Done] Uploaded {len(pngs)} images to Notion at {datetime.now()}")
