@@ -50,8 +50,9 @@ def build_image_blocks(pngs, base_url):
         # --------------------------
         img_url = (
             f"https://cdn.jsdelivr.net/gh/CMUJIN/liquidity-premium-monitor@main/"
-            f"{p['rel']}?v={int(time.time())}"
+            f"docs/{p['rel']}?v={int(time.time())}"
         )
+
 
         blocks.append({
             "object": "block",
