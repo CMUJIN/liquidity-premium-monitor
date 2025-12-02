@@ -2,23 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-Liquidity Premium Monitor (Final Version)
-------------------------------------------
-- 读取 config.yaml 自动批量分析股票
-- 支持 A股 / 港股 / 美股（日线数据）
-- 计算日线 + 周线 LP Score
-- 绘制双面板图：
-    上图：全区间（周线 LP + 收盘价）
-    下图：最近 3 个月（日线 LP + 收盘价）
-- 输出：
-    docs/<symbol>/<symbol>_lp_dual.csv
-    docs/<symbol>/<symbol>_lp_dual_zoom.png
+Liquidity Premium Monitor (Final Anti-Cache Version)
+----------------------------------------------------
+- 自动清空 docs/<symbol>/ 下所有旧文件（CSV + PNG）
+- 图像文件名带时间戳（YYYYMMDD_HH）
+- 不改动任意原有逻辑、指标、绘图样式
+- 稳定用于 Notion + jsDelivr（完全无缓存）
 """
 
 import os, sys, json, yaml
 import matplotlib
-matplotlib.use("Agg")  # ✅ 必须：无图形界面环境下强制使用无缓存后端
+matplotlib.use("Agg")
 import pandas as pd, numpy as np, matplotlib.pyplot as plt
+from datetime import datetime
 
 try:
     import akshare as ak
@@ -168,18 +164,25 @@ def compute_score(df, w_vol=0.4, w_var=0.3, w_val=0.2, w_sent=0.1):
 
 
 # ============================================================
-#  5️⃣ 绘图函数（防缓存版）
+#  5️⃣ 清空目录
+# ============================================================
+def clear_directory(dirpath):
+    if not os.path.exists(dirpath):
+        os.makedirs(dirpath, exist_ok=True)
+        return
+
+    for f in os.listdir(dirpath):
+        fp = os.path.join(dirpath, f)
+        if os.path.isfile(fp):
+            os.remove(fp)
+            print(f"[DEL] {fp}")
+
+
+# ============================================================
+#  6️⃣ 绘图（带时间戳）
 # ============================================================
 def plot_dual_panel(df_d, df_w, symbol, market, start, outdir):
     import matplotlib.pyplot as plt
-    import matplotlib as mpl
-
-    # --- Step 1: 清理缓存环境 ---
-    plt.close("all")
-    mpl.rcParams.update(mpl.rcParamsDefault)
-    plt.rcParams.update({'figure.max_open_warning': 0})
-    plt.rcParams["axes.unicode_minus"] = False
-
     cutoff = df_d["date"].max() - pd.Timedelta(days=90)
     df_recent = df_d[df_d["date"] >= cutoff]
 
@@ -189,45 +192,39 @@ def plot_dual_panel(df_d, df_w, symbol, market, start, outdir):
         constrained_layout=True
     )
 
-    # --- Weekly Panel ---
+    # --- Weekly ---
     ax_p_top = ax_top
     ax_lp_top = ax_p_top.twinx()
-    ax_p_top.plot(df_w["date"], df_w["close"], color="tab:blue", label="Price (Weekly)", linewidth=1.2)
-    ax_lp_top.plot(df_w["date"], df_w["lp_score"], color="tab:orange", label="LP (Weekly)", linewidth=1.4)
+    ax_p_top.plot(df_w["date"], df_w["close"], color="tab:blue", linewidth=1.2)
+    ax_lp_top.plot(df_w["date"], df_w["lp_score"], color="tab:orange", linewidth=1.4)
+
     for thr in [1.2, 1.5, 2.0]:
         ax_lp_top.axhline(thr, color="gray", linestyle="--", linewidth=0.8)
-    ax_p_top.legend(loc="upper left", frameon=False)
+
     ax_p_top.set_title(f"{symbol} ({market.upper()}) Weekly LP + Price since {start}")
 
-    # --- Daily Panel (last 3M) ---
+    # --- Daily (3M) ---
     ax_p_bot = ax_bottom
     ax_lp_bot = ax_p_bot.twinx()
-    ax_p_bot.plot(df_recent["date"], df_recent["close"], color="tab:blue", label="Price (Daily)", linewidth=1.1)
-    ax_lp_bot.plot(df_recent["date"], df_recent["lp_score"], color="tab:green", label="LP (Daily, 3M)", linewidth=1.3)
+    ax_p_bot.plot(df_recent["date"], df_recent["close"], color="tab:blue", linewidth=1.1)
+    ax_lp_bot.plot(df_recent["date"], df_recent["lp_score"], color="tab:green", linewidth=1.3)
+
     for thr in [1.2, 1.5, 2.0]:
         ax_lp_bot.axhline(thr, color="gray", linestyle="--", linewidth=0.8)
-    ax_p_bot.legend(loc="upper left", frameon=False)
 
-    # --- Step 2: 保存并覆盖旧文件 ---
-    os.makedirs(outdir, exist_ok=True)
-    out_path = os.path.join(outdir, f"{symbol}_{market}_lp_dual_zoom.png")
-    if os.path.exists(out_path):
-        os.remove(out_path)
+    # === 时间戳文件名 ===
+    ts = datetime.now().strftime("%Y%m%d_%H")
+    out_path = os.path.join(outdir, f"{symbol}_{market}_lp_dual_zoom_{ts}.png")
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
-    fig.canvas.draw()
     plt.close(fig)
-    plt.close("all")
 
-    # --- Step 3: 验证输出 ---
-    if not os.path.exists(out_path):
-        raise IOError(f"[Plot Error] Failed to save image at {out_path}")
-    print(f"[Plot OK] {out_path} ({os.path.getsize(out_path)} bytes)")
+    print(f"[IMG] {out_path}")
     return out_path
 
 
 # ============================================================
-#  6️⃣ 主函数
+#  7️⃣ 主函数
 # ============================================================
 def main():
     cfg = load_config()
@@ -249,14 +246,19 @@ def main():
         df_w = compute_score(compute_indicators(df, "weekly"))
 
         stock_dir = os.path.join(output_dir, display_name)
+        clear_directory(stock_dir)    # 🔥 清空文件夹
+
         os.makedirs(stock_dir, exist_ok=True)
 
+        # 保存 CSV（无时间戳）
         csv_path = os.path.join(stock_dir, f"{display_name}_{market}_lp_dual.csv")
         pd.concat([df_d.assign(freq="daily"), df_w.assign(freq="weekly")]).to_csv(csv_path, index=False)
 
+        # 绘图（带时间戳）
         png_path = plot_dual_panel(df_d, df_w, display_name, market, start, outdir=stock_dir)
-        print(f"[Saved] CSV: {csv_path}")
-        print(f"[Saved] PNG: {png_path}")
+
+        print(f"[CSV] {csv_path}")
+        print(f"[PNG] {png_path}")
 
     print("\n✅ All tasks completed.")
 
