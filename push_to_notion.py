@@ -2,193 +2,143 @@
 # -*- coding: utf-8 -*-
 
 """
-Push LP Monitor PNGs to Notion Page (CDN Version + TOC)
--------------------------------------------------------
-- 自动读取 docs/ 下股票子目录
-- 每个股票区块前添加目录（可跳转）
-- 每次推送前清空页面
-- 图片引用 jsDelivr CDN（无缓存）
+Push LP Monitor PNGs to Notion (Right-side Outline Version)
+-----------------------------------------------------------
+- 与期货版 push_to_notion 一致
+- 每个股票使用 heading_2，Notion 自动生成右侧目录
+- 找最新 *_YYYYMMDD_HH.png
+- CDN: jsDelivr（无缓存问题）
 """
 
-import os, yaml
+import os
+import yaml
 from datetime import datetime
 from notion_client import Client
+import glob
+
+# -----------------------------
+# 固定 CDN 路径
+# -----------------------------
+BASE_CDN = "https://cdn.jsdelivr.net/gh/CMUJIN/liquidity-premium-monitor@main/docs"
+
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+NOTION_PAGE = os.getenv("NOTION_PAGE_ID")
+
+notion = Client(auth=NOTION_TOKEN)
 
 
-# -------------------------------------------------------
-# 固定 CDN 前缀（不使用 raw.githubusercontent）
-# -------------------------------------------------------
-BASE_URL = "https://cdn.jsdelivr.net/gh/CMUJIN/liquidity-premium-monitor@main/docs"
+# -----------------------------
+# Utility
+# -----------------------------
+def get_latest(pattern):
+    """匹配 *_YYYYMMDD_HH.png"""
+    lst = glob.glob(pattern)
+    if not lst:
+        return None
+    return max(lst, key=os.path.getmtime)
 
 
-def load_config(path="config.yaml"):
-    if not os.path.exists(path):
-        raise FileNotFoundError("Missing config.yaml")
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+def file_time(path):
+    if not path or not os.path.exists(path):
+        return "N/A"
+    return datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M:%S")
 
 
-# -------------------------------------------------------
-# 获取 docs/<symbol> 下所有 PNG 文件
-# -------------------------------------------------------
-def get_stock_pngs(output_dir):
-    stocks = {}
-
-    for stock_name in os.listdir(output_dir):
-        stock_dir = os.path.join(output_dir, stock_name)
-
-        if not os.path.isdir(stock_dir):
-            continue
-
-        pngs = []
-        for f in os.listdir(stock_dir):
-            if not f.endswith(".png"):
-                continue
-
-            full = os.path.join(stock_dir, f)
-            rel = os.path.relpath(full, output_dir).replace("\\", "/")
-            mtime = os.path.getmtime(full)
-
-            pngs.append({
-                "path": full,
-                "rel": rel,
-                "mtime": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S"),
-                "file": f
-            })
-
-        if pngs:
-            stocks[stock_name] = sorted(pngs, key=lambda x: x["file"])
-
-    return stocks  # dict: { "MAOTAI": [png1, png2], ... }
-
-
-# -------------------------------------------------------
-# 构建目录（自动跳转到对应 Heading）
-# -------------------------------------------------------
-def build_toc_block(stocks):
-    blocks = []
-
-    blocks.append({
+def safe_heading(text):
+    return {
         "object": "block",
         "type": "heading_2",
         "heading_2": {
-            "rich_text": [
-                {"type": "text", "text": {"content": "📌 目录（TOC）"}}
-            ]
+            "rich_text": [{"type": "text", "text": {"content": str(text)}}]
         }
-    })
-
-    for stock in stocks.keys():
-        blocks.append({
-            "object": "block",
-            "type": "bulleted_list_item",
-            "bulleted_list_item": {
-                "rich_text": [
-                    {
-                        "type": "mention",
-                        "mention": {"page": {"id": f"{stock}"}}
-                    },
-                    {"type": "text", "text": {"content": f"   ← 点击跳转到 {stock} 区块"}}
-                ]
-            }
-        })
-    return blocks
+    }
 
 
-# -------------------------------------------------------
-# 构建整个内容（目录 + 股票分区）
-# -------------------------------------------------------
-def build_page_blocks(stocks):
+def safe_para(text):
+    return {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {
+            "rich_text": [{"type": "text", "text": {"content": str(text)}}]
+        }
+    }
+
+
+# -----------------------------
+# 清空 Notion 页面
+# -----------------------------
+def clear_page(page_id):
+    try:
+        children = notion.blocks.children.list(page_id)["results"]
+        for c in children:
+            # 保留子页面 / 数据库
+            if c["type"] in ("child_page", "child_database"):
+                continue
+            notion.blocks.delete(c["id"])
+        print("[INFO] Notion page cleared.")
+    except Exception as e:
+        print(f"[WARN] clear_page failed: {e}")
+
+
+# -----------------------------
+# 主构建逻辑（与期货版一致）
+# -----------------------------
+def push_to_notion():
+
+    cfg = yaml.safe_load(open("config.yaml", "r", encoding="utf-8"))
+    outdir = cfg.get("output_dir", "docs")
+
+    # 扫描所有股票子目录
+    stocks = []
+    for name in os.listdir(outdir):
+        d = os.path.join(outdir, name)
+        if os.path.isdir(d):
+            stocks.append(name)
+
+    stocks = sorted(stocks)
+    print(f"[INFO] Found stocks: {stocks}")
+
+    # 清空 Notion 页面
+    clear_page(NOTION_PAGE)
+
     blocks = []
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    for stock in stocks:
 
-    blocks.append({
-        "object": "block",
-        "type": "heading_1",
-        "heading_1": {
-            "rich_text": [
-                {"type": "text", "text": {"content": f"📊 LP Monitor Dashboard ({now_str})"}}
-            ]
-        }
-    })
+        # ===== 寻找最新 trend_v6 图 =====
+        trend_path = get_latest(f"{outdir}/{stock}/{stock}_trend_v6*.png")
+        trend_file = os.path.basename(trend_path) if trend_path else None
+        trend_url = f"{BASE_CDN}/{stock}/{trend_file}" if trend_file else None
 
-    # -----------------------------
-    # 添加目录部分
-    # -----------------------------
-    toc = build_toc_block(stocks)
-    blocks.extend(toc)
+        # ===== 寻找最新 lp_dual_zoom 图 =====
+        lp_path = get_latest(f"{outdir}/{stock}/{stock}_*_lp_dual_zoom*.png")
+        lp_file = os.path.basename(lp_path) if lp_path else None
+        lp_url = f"{BASE_CDN}/{stock}/{lp_file}" if lp_file else None
 
-    # -----------------------------
-    # 添加每个股票的内容
-    # -----------------------------
-    for stock_name, png_list in stocks.items():
+        # ===== Header （右侧目录由这个自动生成）=====
+        blocks.append(safe_heading(f"📈 {stock} LP Monitor"))
 
-        # Heading anchor（用于 TOC 跳转）
-        blocks.append({
-            "object": "block",
-            "id": stock_name,  # ⭐ 用 symbol 作为页面内部 anchor ID
-            "type": "heading_2",
-            "heading_2": {
-                "rich_text": [
-                    {"type": "text", "text": {"content": f"📈 {stock_name}"}}
-                ]
-            }
-        })
+        blocks.append(safe_para(f"🕒 Updated: {file_time(lp_path)}"))
 
-        for p in png_list:
-            img_url = f"{BASE_URL}/{p['rel']}"
-
+        # ===== Trend 图片 =====
+        if trend_url:
             blocks.append({
                 "object": "block",
                 "type": "image",
-                "image": {"type": "external", "external": {"url": img_url}}
+                "image": {"type": "external", "external": {"url": trend_url}}
             })
+
+        # ===== LP Zoom 图片 =====
+        if lp_url:
             blocks.append({
                 "object": "block",
-                "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "text": {"content": f"🕒 Last updated: {p['mtime']}"}}
-                    ]
-                }
+                "type": "image",
+                "image": {"type": "external", "external": {"url": lp_url}}
             })
 
-    return blocks
-
-
-# -------------------------------------------------------
-# 推送到 Notion
-# -------------------------------------------------------
-def push_to_notion():
-    token = os.getenv("NOTION_TOKEN")
-    page_id = os.getenv("NOTION_PAGE_ID")
-    if not token or not page_id:
-        raise EnvironmentError("Missing NOTION_TOKEN or NOTION_PAGE_ID")
-
-    cfg = load_config()
-    output_dir = cfg.get("output_dir", "docs")
-
-    stocks = get_stock_pngs(output_dir)
-    if not stocks:
-        print("[Warn] No PNG found.")
-        return
-
-    notion = Client(auth=token)
-
-    # 清空页面
-    existing = notion.blocks.children.list(page_id).get("results", [])
-    for child in existing:
-        try:
-            notion.blocks.delete(child["id"])
-        except:
-            pass
-
-    blocks = build_page_blocks(stocks)
-
-    notion.blocks.children.append(page_id, children=blocks)
-
-    print(f"[OK] Uploaded {sum(len(v) for v in stocks.values())} PNGs with TOC")
+    # 一次性追加
+    notion.blocks.children.append(NOTION_PAGE, children=blocks)
+    print("[DONE] LP monitor pushed to Notion with right-side outline.")
 
 
 if __name__ == "__main__":
